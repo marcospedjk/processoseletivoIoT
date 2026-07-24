@@ -1,6 +1,7 @@
 import machine
 import time
 
+
 # Configuração de Parâmetros e Pinos
 
 LIMITE_TEMPO_X = 4800       # Margem para latência do CI
@@ -29,6 +30,7 @@ def ler_temperatura():
     except:
         return 20.0
 
+
 # Variáveis de Estado
 
 alert_door = False
@@ -41,6 +43,7 @@ print("Sistema de Monitoramento Inicializado")
 
 t_ref = ler_temperatura()
 
+
 # Loop Principal
 
 while True:
@@ -48,6 +51,7 @@ while True:
     door_state = btn.value()  # 0 = Aberta, 1 = Fechada
     t_atual = ler_temperatura()
     delta_t = t_atual - t_ref
+
     # --- 1. DETECÇÃO DE ABERTURA / FECHAMENTO DA PORTA ---
     if door_state == 0:  # Porta Aberta
         if not door_is_open:
@@ -72,13 +76,17 @@ while True:
         if alert_door or alert_temp:
             # Sistema estava em alerta: tenta normalizar
             if delta_t < LIMITE_VARIACAO_Y:
+                #Aguarda 600ms para garantir que o script de CI 
+                
+                time.sleep_ms(600)
+                
                 print("Status: Sistema Normalizado.")
                 alert_door = False
                 alert_temp = False
                 t_ref = t_atual
         else:
             # Sistema normal (sem alertas): atualiza o t_ref para acompanhar o clima
-            # É AQUI que o sistema grava os 20°C que o CI envia no Passo 2!
             t_ref = t_atual
-    # Pausa curta para casar com o polling do Wokwi
+
+    # Pausa curta 
     time.sleep_ms(20)
