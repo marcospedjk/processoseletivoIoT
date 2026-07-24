@@ -1,7 +1,6 @@
 import machine
 import time
 
-
 # Configuração de Parâmetros e Pinos
 
 LIMITE_TEMPO_X = 4800       # Margem para latência do CI
@@ -30,7 +29,6 @@ def ler_temperatura():
     except:
         return 20.0
 
-
 # Variáveis de Estado
 
 alert_door = False
@@ -43,7 +41,6 @@ print("Sistema de Monitoramento Inicializado")
 
 t_ref = ler_temperatura()
 
-
 # Loop Principal
 
 while True:
@@ -51,21 +48,18 @@ while True:
     door_state = btn.value()  # 0 = Aberta, 1 = Fechada
     t_atual = ler_temperatura()
     delta_t = t_atual - t_ref
-
     # --- 1. DETECÇÃO DE ABERTURA / FECHAMENTO DA PORTA ---
     if door_state == 0:  # Porta Aberta
-        # Se a porta acabou de ser detectada como aberta, inicia o cronômetro
         if not door_is_open:
             door_is_open = True
             door_open_start_time = current_time
         
-        # Se continuar aberta e estourar o limite de tempo
         if time.ticks_diff(current_time, door_open_start_time) >= LIMITE_TEMPO_X:
             if not alert_door:
                 print("ALERTA: Porta aberta por muito tempo!")
                 alert_door = True
     else:  # Porta Fechada
-        door_is_open = False  # Reseta o controle de abertura
+        door_is_open = False
 
     # --- 2. MONITORAMENTO DE TEMPERATURA ---
     if delta_t >= LIMITE_VARIACAO_Y:
@@ -73,14 +67,18 @@ while True:
             print("ALERTA: Degradacao termica detectada!")
             alert_temp = True
 
-    # --- 3. REQUISITO DE NORMALIZAÇÃO ---
-    # Só normaliza quando a porta está fechada (1) AND a variação térmica está OK
-    if door_state == 1 and delta_t < LIMITE_VARIACAO_Y:
+    # --- 3. REQUISITO DE NORMALIZAÇÃO E ATUALIZAÇÃO DA REFERÊNCIA ---
+    if door_state == 1:
         if alert_door or alert_temp:
-            print("Status: Sistema Normalizado.")
-            alert_door = False
-            alert_temp = False
-            t_ref = t_atual  # Atualiza a referência de temperatura
-
-   
-    time.sleep_ms(10)
+            # Sistema estava em alerta: tenta normalizar
+            if delta_t < LIMITE_VARIACAO_Y:
+                print("Status: Sistema Normalizado.")
+                alert_door = False
+                alert_temp = False
+                t_ref = t_atual
+        else:
+            # Sistema normal (sem alertas): atualiza o t_ref para acompanhar o clima
+            # É AQUI que o sistema grava os 20°C que o CI envia no Passo 2!
+            t_ref = t_atual
+    # Pausa curta para casar com o polling do Wokwi
+    time.sleep_ms(20)
