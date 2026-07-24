@@ -1,25 +1,26 @@
 import machine
 import time
 
+
 # Configuração de Parâmetros e Pinos
 
-LIMITE_TEMPO_X = 4900       # Margem para compensar latência do CI Wokwi (4.9s)
-LIMITE_VARIACAO_Y = 3.0     # Gradiente máximo de temperatura em °C (Delta T)
+LIMITE_TEMPO_X = 4800       # Margem para latência do CI
+LIMITE_VARIACAO_Y = 3.0     # Delta T máximo em °C
 
 # Botão na GPIO 4
 btn = machine.Pin(4, machine.Pin.IN, machine.Pin.PULL_DOWN)
 
-# Configuração I2C para o sensor MPU6050 (SDA=21, SCL=22)
+# Configuração I2C para o sensor MPU6050
 i2c = machine.I2C(0, scl=machine.Pin(22), sda=machine.Pin(21))
 
-# Inicializa o MPU6050
+# Inicializa MPU6050
 try:
     i2c.writeto_mem(0x68, 0x6B, b'\x00')
 except:
     pass
 
 def ler_temperatura():
-    """Lê os registradores do MPU6050 e converte para °C"""
+    """Lê a temperatura do MPU6050"""
     try:
         raw = i2c.readfrom_mem(0x68, 0x41, 2)
         val = (raw[0] << 8) | raw[1]
@@ -27,7 +28,7 @@ def ler_temperatura():
             val -= 0x10000
         return (val / 340.0) + 36.53
     except:
-        return 20.0  # Valor padrão seguro caso falhe a leitura inicial
+        return 20.0
 
 
 # Variáveis de Estado
@@ -40,44 +41,46 @@ door_open_start_time = 0
 # Mensagem OBRIGATÓRIA de inicialização
 print("Sistema de Monitoramento Inicializado")
 
-# Temperatura inicial de referência
 t_ref = ler_temperatura()
 
 
-# Loop Principal (Não-Bloqueante)
+# Loop Principal
 
 while True:
     current_time = time.ticks_ms()
-    door_state = btn.value()       # 1 = Fechada, 0 = Aberta
+    door_state = btn.value()  # 0 = Aberta, 1 = Fechada
     t_atual = ler_temperatura()
-    
-    #  Monitoramento do Tempo de Porta Aberta
+    delta_t = t_atual - t_ref
+
+    # --- 1. DETECÇÃO DE ABERTURA / FECHAMENTO DA PORTA ---
     if door_state == 0:  # Porta Aberta
+        # Se a porta acabou de ser detectada como aberta, inicia o cronômetro
         if not door_is_open:
             door_is_open = True
             door_open_start_time = current_time
-        else:
-            if time.ticks_diff(current_time, door_open_start_time) >= LIMITE_TEMPO_X:
-                if not alert_door:
-                    print("ALERTA: Porta aberta por muito tempo!")
-                    alert_door = True
+        
+        # Se continuar aberta e estourar o limite de tempo
+        if time.ticks_diff(current_time, door_open_start_time) >= LIMITE_TEMPO_X:
+            if not alert_door:
+                print("ALERTA: Porta aberta por muito tempo!")
+                alert_door = True
     else:  # Porta Fechada
-        door_is_open = False
-        door_open_start_time = 0
+        door_is_open = False  # Reseta o controle de abertura
 
-    #  Monitoramento de Elevação Térmica
-    delta_t = t_atual - t_ref
+    # --- 2. MONITORAMENTO DE TEMPERATURA ---
     if delta_t >= LIMITE_VARIACAO_Y:
         if not alert_temp:
             print("ALERTA: Degradacao termica detectada!")
             alert_temp = True
 
-    #  Restauração do Estado (Normalização)
+    # --- 3. REQUISITO DE NORMALIZAÇÃO ---
+    # Só normaliza quando a porta está fechada (1) AND a variação térmica está OK
     if door_state == 1 and delta_t < LIMITE_VARIACAO_Y:
         if alert_door or alert_temp:
             print("Status: Sistema Normalizado.")
             alert_door = False
             alert_temp = False
-            t_ref = t_atual  # Atualiza referência após normalizar
-            
-    time.sleep_ms(20)
+            t_ref = t_atual  # Atualiza a referência de temperatura
+
+   
+    time.sleep_ms(10)
